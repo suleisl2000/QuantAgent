@@ -5,9 +5,18 @@ Uses LLM and toolkit to compute and interpret indicators like MACD, RSI, ROC, St
 
 import copy
 import json
+import time
 
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
+# RateLimitError and connection errors may come from OpenAI or compatible APIs
+try:
+    from openai import RateLimitError, APIConnectionError
+except ImportError:
+    # Fallback for compatible APIs
+    RateLimitError = Exception
+    APIConnectionError = Exception
 
 
 def create_indicator_agent(llm, toolkit):
@@ -56,9 +65,52 @@ def create_indicator_agent(llm, toolkit):
                 return [HumanMessage(content="请分析提供的OHLC数据的技术指标。请用中文回答。")] + list(msgs)
             return list(msgs)
 
+        # --- Retry wrapper for LLM invocation ---
+        def invoke_with_retry(call_fn, *args, retries=3, wait_sec=8):
+            """Retry LLM calls with exponential backoff for rate limits, connection errors, etc."""
+            last_error = None
+            for attempt in range(retries):
+                try:
+                    return call_fn(*args)
+                except (RateLimitError, APIConnectionError) as e:
+                    last_error = e
+                    error_type = type(e).__name__
+                    print(
+                        f"{error_type} encountered, retrying in {wait_sec}s (attempt {attempt + 1}/{retries})..."
+                    )
+                    if attempt < retries - 1:
+                        time.sleep(wait_sec)
+                except Exception as e:
+                    last_error = e
+                    error_type = type(e).__name__
+                    # Check if it's a connection-related error (including httpx errors)
+                    error_str = str(e).lower()
+                    error_module = type(e).__module__.lower()
+                    
+                    # Check for connection-related keywords or httpx/requests errors
+                    connection_keywords = ['connection', 'network', 'disconnected', 'timeout', 'remote protocol']
+                    is_connection_error = (
+                        any(keyword in error_str for keyword in connection_keywords) or
+                        'httpx' in error_module or
+                        'requests' in error_module or
+                        'RemoteProtocolError' in error_type or
+                        'ConnectError' in error_type
+                    )
+                    
+                    if is_connection_error:
+                        print(
+                            f"Connection error ({error_type}): {e}, retrying in {wait_sec}s (attempt {attempt + 1}/{retries})..."
+                        )
+                        if attempt < retries - 1:
+                            time.sleep(wait_sec)
+                    else:
+                        # For other errors, re-raise immediately
+                        raise
+            raise RuntimeError(f"Max retries ({retries}) exceeded. Last error: {last_error}")
+
         # --- Step 1: Ask for tool calls ---
         messages = ensure_user_message(messages)
-        ai_response = chain.invoke(messages)
+        ai_response = invoke_with_retry(chain.invoke, messages)
         messages.append(ai_response)
 
         # --- Step 2: Collect tool results ---
@@ -81,7 +133,7 @@ def create_indicator_agent(llm, toolkit):
         # --- Step 3: Re-run the chain with tool results ---
         # Ensure user message still exists after tool calls
         messages = ensure_user_message(messages)
-        final_response = chain.invoke(messages)
+        final_response = invoke_with_retry(chain.invoke, messages)
 
         return {
             "messages": messages + [final_response],

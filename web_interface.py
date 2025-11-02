@@ -96,7 +96,7 @@ class WebTradingAnalyzer:
                     period=period,  # "1", "5", "15", "30", "60"
                     start_date=start_date_str,
                     end_date=end_date_str,
-                    adjust="",  # No adjustment
+                    adjust="qfq",  # Forward adjustment (前复权)
                 )
             else:  # stock_zh_a_hist
                 # Daily/weekly/monthly data interface
@@ -105,7 +105,7 @@ class WebTradingAnalyzer:
                     period=period,  # "daily", "weekly", "monthly"
                     start_date=start_date_str,
                     end_date=end_date_str,
-                    adjust="",  # No adjustment
+                    adjust="qfq",  # Forward adjustment (前复权)
             )
 
             if df is None or df.empty:

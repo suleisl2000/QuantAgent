@@ -31,8 +31,7 @@ def generate_kline_image(kline_data) -> dict:
     """
 
     df = pd.DataFrame(kline_data)
-    # take recent 40
-    df = df.tail(40)
+    # Use all data passed in - no limit, let days parameter control the data range
 
     df.to_csv("record.csv", index=False, date_format="%Y-%m-%d %H:%M:%S")
     try:
@@ -84,7 +83,8 @@ def generate_trend_image(kline_data) -> dict:
         dict: base64 image and description
     """
     data = pd.DataFrame(kline_data)
-    candles = data.iloc[-50:].copy()
+    # Use all data passed in - no limit, let days parameter control the data range
+    candles = data.copy()
 
     candles["Datetime"] = pd.to_datetime(candles["Datetime"])
     candles.set_index("Datetime", inplace=True)
