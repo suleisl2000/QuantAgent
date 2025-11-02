@@ -4,7 +4,12 @@ import time
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from openai import RateLimitError
+# RateLimitError may come from OpenAI or compatible APIs
+try:
+    from openai import RateLimitError
+except ImportError:
+    # Fallback for compatible APIs
+    RateLimitError = Exception
 
 
 def invoke_tool_with_retry(tool_fn, tool_args, retries=3, wait_sec=4):

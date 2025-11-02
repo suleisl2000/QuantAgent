@@ -7,7 +7,12 @@ import json
 import time
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
-from openai import RateLimitError
+# RateLimitError may come from OpenAI or compatible APIs
+try:
+    from openai import RateLimitError
+except ImportError:
+    # Fallback for compatible APIs
+    RateLimitError = Exception
 
 
 # --- Retry wrapper for LLM invocation ---

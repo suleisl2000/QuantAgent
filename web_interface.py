@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 import pandas as pd
-import yfinance as yf
+import akshare as ak
 from flask import Flask, jsonify, render_template, request, send_file
 from openai import OpenAI
 
@@ -26,185 +26,118 @@ class WebTradingAnalyzer:
         # Ensure data dir exists
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
-        # Available assets and their display names
+        # Available assets and their display names (A-share stocks)
         self.asset_mapping = {
-            "SPX": "S&P 500",
-            "BTC": "Bitcoin",
-            "GC": "Gold Futures",
-            "NQ": "Nasdaq Futures",
-            "CL": "Crude Oil",
-            "ES": "E-mini S&P 500",
-            "DJI": "Dow Jones",
-            "QQQ": "Invesco QQQ Trust",
-            "VIX": "Volatility Index",
-            "DXY": "US Dollar Index",
-            "AAPL": "Apple Inc.",  # New asset
-            "TSLA": "Tesla Inc.",  # New asset
+            "000001": "平安银行",
+            "000002": "万科A",
+            "600000": "浦发银行",
+            "600519": "贵州茅台",
+            "600036": "招商银行",
+            "000858": "五粮液",
+            "002415": "海康威视",
+            "000063": "中兴通讯",
+            "600887": "伊利股份",
+            "000776": "广发证券",
         }
 
-        # Yahoo Finance symbol mapping
-        self.yfinance_symbols = {
-            "SPX": "^GSPC",  # S&P 500
-            "BTC": "BTC-USD",  # Bitcoin
-            "GC": "GC=F",  # Gold Futures
-            "NQ": "NQ=F",  # Nasdaq Futures
-            "CL": "CL=F",  # Crude Oil
-            "ES": "ES=F",  # E-mini S&P 500
-            "DJI": "^DJI",  # Dow Jones
-            "QQQ": "QQQ",  # Invesco QQQ Trust
-            "VIX": "^VIX",  # Volatility Index
-            "DXY": "DX-Y.NYB",  # US Dollar Index
-        }
-
-        # Yahoo Finance interval mapping
-        self.yfinance_intervals = {
-            "1m": "1m",
-            "5m": "5m",
-            "15m": "15m",
-            "30m": "30m",
-            "1h": "1h",
-            "4h": "4h",  # yfinance supports 4h natively!
-            "1d": "1d",
-            "1w": "1wk",
-            "1mo": "1mo",
+        # akshare interface mapping
+        self.akshare_interface_map = {
+            # Minute data uses stock_zh_a_hist_min_em
+            "1m": {"func": "stock_zh_a_hist_min_em", "period": "1"},
+            "5m": {"func": "stock_zh_a_hist_min_em", "period": "5"},
+            "15m": {"func": "stock_zh_a_hist_min_em", "period": "15"},
+            "30m": {"func": "stock_zh_a_hist_min_em", "period": "30"},
+            "60m": {"func": "stock_zh_a_hist_min_em", "period": "60"},
+            # Daily/weekly/monthly data uses stock_zh_a_hist
+            "1d": {"func": "stock_zh_a_hist", "period": "daily"},
+            "1w": {"func": "stock_zh_a_hist", "period": "weekly"},
+            "1mo": {"func": "stock_zh_a_hist", "period": "monthly"},
         }
 
         # Load persisted custom assets
         self.custom_assets_file = self.data_dir / "custom_assets.json"
         self.custom_assets = self.load_custom_assets()
 
-    def fetch_yfinance_data(
-        self, symbol: str, interval: str, start_date: str, end_date: str
-    ) -> pd.DataFrame:
-        """Fetch OHLCV data from Yahoo Finance."""
-        try:
-            yf_symbol = self.yfinance_symbols.get(symbol, symbol)
-            yf_interval = self.yfinance_intervals.get(interval, interval)
-
-            df = yf.download(
-                tickers=yf_symbol, start=start_date, end=end_date, interval=yf_interval
-            )
-
-            if df is None or df.empty:
-                return pd.DataFrame()
-
-            # Ensure df is a DataFrame, not a Series
-            if isinstance(df, pd.Series):
-                df = df.to_frame()
-
-            # Reset index to ensure we have a clean DataFrame
-            df = df.reset_index()
-
-            # Ensure we have a DataFrame
-            if not isinstance(df, pd.DataFrame):
-                return pd.DataFrame()
-
-            # Handle potential MultiIndex columns
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
-
-            # Rename columns if needed
-            column_mapping = {
-                "Date": "Datetime",
-                "Open": "Open",
-                "High": "High",
-                "Low": "Low",
-                "Close": "Close",
-                "Volume": "Volume",
-            }
-
-            # Only rename columns that exist
-            existing_columns = {
-                old: new for old, new in column_mapping.items() if old in df.columns
-            }
-            df = df.rename(columns=existing_columns)
-
-            # Ensure we have the required columns
-            required_columns = ["Datetime", "Open", "High", "Low", "Close"]
-            if not all(col in df.columns for col in required_columns):
-                print(f"Warning: Missing columns. Available: {list(df.columns)}")
-                return pd.DataFrame()
-
-            # Select only the required columns
-            df = df[required_columns]
-            df["Datetime"] = pd.to_datetime(df["Datetime"])
-
-            return df
-
-        except Exception as e:
-            print(f"Error fetching data for {symbol}: {e}")
-            return pd.DataFrame()
-
-    def fetch_yfinance_data_with_datetime(
+    def fetch_akshare_data(
         self,
         symbol: str,
         interval: str,
         start_datetime: datetime,
         end_datetime: datetime,
     ) -> pd.DataFrame:
-        """Fetch OHLCV data from Yahoo Finance using datetime objects for exact time precision."""
+        """Fetch OHLCV data from akshare for A-share stocks."""
         try:
-            yf_symbol = self.yfinance_symbols.get(symbol, symbol)
-            yf_interval = self.yfinance_intervals.get(interval, interval)
+            # Clean symbol (remove .SH/.SZ suffix if present, ensure 6-digit code)
+            clean_symbol = symbol.replace(".SH", "").replace(".SZ", "").strip()
 
-            print(
-                f"Fetching {yf_symbol} from {start_datetime} to {end_datetime} with interval {yf_interval}"
-            )
+            # Validate stock code format (should be 6 digits)
+            if not clean_symbol.isdigit() or len(clean_symbol) != 6:
+                print(f"Invalid stock symbol format: {symbol}, expected 6-digit code")
+                return pd.DataFrame()
 
-            # Use datetime objects directly for yfinance
-            df = yf.download(
-                tickers=yf_symbol,
-                start=start_datetime,
-                end=end_datetime,
-                interval=yf_interval,
-                auto_adjust=True,
-                prepost=False,
+            # Get interface configuration
+            interface_config = self.akshare_interface_map.get(interval)
+            if not interface_config:
+                print(f"Unsupported interval: {interval}")
+                return pd.DataFrame()
+
+            func_name = interface_config["func"]
+            period = interface_config["period"]
+
+            # Format dates (akshare needs YYYYMMDD format)
+            start_date_str = start_datetime.strftime("%Y%m%d")
+            end_date_str = end_datetime.strftime("%Y%m%d")
+
+            # Call appropriate akshare function based on interval type
+            if func_name == "stock_zh_a_hist_min_em":
+                # Minute data interface
+                df = ak.stock_zh_a_hist_min_em(
+                    symbol=clean_symbol,
+                    period=period,  # "1", "5", "15", "30", "60"
+                    start_date=start_date_str,
+                    end_date=end_date_str,
+                    adjust="",  # No adjustment
+                )
+            else:  # stock_zh_a_hist
+                # Daily/weekly/monthly data interface
+                df = ak.stock_zh_a_hist(
+                    symbol=clean_symbol,
+                    period=period,  # "daily", "weekly", "monthly"
+                    start_date=start_date_str,
+                    end_date=end_date_str,
+                    adjust="",  # No adjustment
             )
 
             if df is None or df.empty:
                 print(f"No data returned for {symbol}")
                 return pd.DataFrame()
 
-            # Ensure df is a DataFrame, not a Series
-            if isinstance(df, pd.Series):
-                df = df.to_frame()
-
-            # Reset index to ensure we have a clean DataFrame
-            df = df.reset_index()
-
-            # Ensure we have a DataFrame
-            if not isinstance(df, pd.DataFrame):
-                return pd.DataFrame()
-
-            # Handle potential MultiIndex columns
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
-
-            # Rename columns if needed
+            # akshare returns Chinese column names, need to map to English
             column_mapping = {
-                "Date": "Datetime",
-                "Open": "Open",
-                "High": "High",
-                "Low": "Low",
-                "Close": "Close",
-                "Volume": "Volume",
+                "时间": "Datetime",  # Minute data uses "时间"
+                "日期": "Datetime",  # Daily/weekly/monthly data uses "日期"
+                "开盘": "Open",
+                "收盘": "Close",
+                "最高": "High",
+                "最低": "Low",
+                "成交量": "Volume",
             }
 
-            # Only rename columns that exist
-            existing_columns = {
+            # Rename columns (only existing ones)
+            existing_mapping = {
                 old: new for old, new in column_mapping.items() if old in df.columns
             }
-            df = df.rename(columns=existing_columns)
+            df = df.rename(columns=existing_mapping)
 
-            # Ensure we have the required columns
+            # Ensure required columns exist
             required_columns = ["Datetime", "Open", "High", "Low", "Close"]
             if not all(col in df.columns for col in required_columns):
                 print(f"Warning: Missing columns. Available: {list(df.columns)}")
                 return pd.DataFrame()
 
-            # Select only the required columns
-            df = df[required_columns]
+            # Convert to datetime and sort
             df["Datetime"] = pd.to_datetime(df["Datetime"])
+            df = df[required_columns].sort_values("Datetime").reset_index(drop=True)
 
             print(f"Successfully fetched {len(df)} data points for {symbol}")
             print(f"Date range: {df['Datetime'].min()} to {df['Datetime'].max()}")
@@ -212,8 +145,20 @@ class WebTradingAnalyzer:
             return df
 
         except Exception as e:
-            print(f"Error fetching data for {symbol}: {e}")
+            print(f"Error fetching akshare data for {symbol}: {e}")
+            import traceback
+            traceback.print_exc()
             return pd.DataFrame()
+
+    def fetch_akshare_data_with_datetime(
+        self,
+        symbol: str,
+        interval: str,
+        start_datetime: datetime,
+        end_datetime: datetime,
+    ) -> pd.DataFrame:
+        """Fetch OHLCV data from akshare using datetime objects for exact time precision."""
+        return self.fetch_akshare_data(symbol, interval, start_datetime, end_datetime)
 
     def get_available_assets(self) -> list:
         """Get list of available assets from the asset mapping dictionary."""
@@ -476,17 +421,66 @@ class WebTradingAnalyzer:
     def validate_api_key(self) -> Dict[str, Any]:
         """Validate the current API key by making a simple test call."""
         try:
+            # Check which backend to use based on base_url
+            base_url = analyzer.trading_graph.config.get("base_url")
 
-            client = OpenAI()
+            if base_url:
+                # Use DashScope (compatible mode)
+                api_key = os.environ.get("OPENAI_API_KEY")
+                if not api_key:
+                    api_key = analyzer.trading_graph.config.get("api_key")
 
-            # Make a simple test call
-            _ = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": "Hello"}],
-                max_tokens=5,
-            )
+                if not api_key:
+                    return {
+                        "valid": False,
+                        "error": "❌ API Key Missing: OPENAI_API_KEY not set in environment.",
+                    }
 
-            return {"valid": True, "message": "API key is valid"}
+                # Use dashscope SDK for validation
+                try:
+                    from dashscope import Generation
+                    response = Generation.call(
+                        model="qwen-plus",
+                        messages=[{"role": "user", "content": "Hello"}],
+                        api_key=api_key,
+                    )
+
+                    if response.status_code == 200:
+                        return {"valid": True, "message": "DashScope API key is valid"}
+                    else:
+                        return {
+                            "valid": False,
+                            "error": f"❌ Invalid API Key: {response.message}",
+                        }
+                except Exception as e:
+                    error_msg = str(e)
+                    if "authentication" in error_msg.lower() or "401" in error_msg:
+                        return {
+                            "valid": False,
+                            "error": "❌ Invalid API Key: The DashScope API key is invalid or has expired.",
+                        }
+                    elif "rate limit" in error_msg.lower() or "429" in error_msg:
+                        return {
+                            "valid": False,
+                            "error": "⚠️ Rate Limit Exceeded: You've hit the DashScope API rate limit.",
+                        }
+                    else:
+                        return {
+                            "valid": False,
+                            "error": f"❌ API Key Error: {error_msg}",
+                        }
+            else:
+                # Use OpenAI (default)
+                client = OpenAI()
+
+                # Make a simple test call
+                _ = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": "Hello"}],
+                    max_tokens=5,
+                )
+
+                return {"valid": True, "message": "OpenAI API key is valid"}
 
         except Exception as e:
             error_msg = str(e)
@@ -498,22 +492,22 @@ class WebTradingAnalyzer:
             ):
                 return {
                     "valid": False,
-                    "error": "❌ Invalid API Key: The OpenAI API key is invalid or has expired. Please update it in the Settings section.",
+                    "error": "❌ Invalid API Key: The API key is invalid or has expired. Please update it in the Settings section.",
                 }
             elif "rate limit" in error_msg.lower() or "429" in error_msg:
                 return {
                     "valid": False,
-                    "error": "⚠️ Rate Limit Exceeded: You've hit the OpenAI API rate limit. Please wait a moment and try again.",
+                    "error": "⚠️ Rate Limit Exceeded: You've hit the API rate limit. Please wait a moment and try again.",
                 }
             elif "quota" in error_msg.lower() or "billing" in error_msg.lower():
                 return {
                     "valid": False,
-                    "error": "💳 Billing Issue: Your OpenAI account has insufficient credits or billing issues. Please check your OpenAI account.",
+                    "error": "💳 Billing Issue: Your account has insufficient credits or billing issues.",
                 }
             elif "network" in error_msg.lower() or "connection" in error_msg.lower():
                 return {
                     "valid": False,
-                    "error": "🌐 Network Error: Unable to connect to OpenAI servers. Please check your internet connection.",
+                    "error": "🌐 Network Error: Unable to connect to API servers. Please check your internet connection.",
                 }
             else:
                 return {"valid": False, "error": f"❌ API Key Error: {error_msg}"}
@@ -652,7 +646,7 @@ def analyze():
                 )
 
         # Fetch data with datetime objects
-        df = analyzer.fetch_yfinance_data_with_datetime(
+        df = analyzer.fetch_akshare_data_with_datetime(
             asset, timeframe, start_dt, end_dt
         )
         if df.empty:

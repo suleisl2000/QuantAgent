@@ -26,17 +26,22 @@ class TradingGraph:
 
         # Get API key with proper validation
         api_key = self._get_api_key()
+        
+        # Get base_url from config (for compatible mode like DashScope)
+        base_url = self.config.get("base_url")
 
         # Initialize LLMs with explicit API key
         self.agent_llm = ChatOpenAI(
             model=self.config.get("agent_llm_model", "gpt-4o-mini"),
             temperature=self.config.get("agent_llm_temperature", 0.1),
             api_key=api_key,
+            base_url=base_url,
         )
         self.graph_llm = ChatOpenAI(
             model=self.config.get("graph_llm_model", "gpt-4o"),
             temperature=self.config.get("graph_llm_temperature", 0.1),
             api_key=api_key,
+            base_url=base_url,
         )
         self.toolkit = TechnicalTools()
 
@@ -118,16 +123,21 @@ class TradingGraph:
         # Get the current API key with validation
         api_key = self._get_api_key()
         
+        # Get base_url from config
+        base_url = self.config.get("base_url")
+        
         # Recreate LLM objects with explicit API key and config values
         self.agent_llm = ChatOpenAI(
             model=self.config.get("agent_llm_model", "gpt-4o-mini"),
             temperature=self.config.get("agent_llm_temperature", 0.1),
             api_key=api_key,
+            base_url=base_url,
         )
         self.graph_llm = ChatOpenAI(
             model=self.config.get("graph_llm_model", "gpt-4o"),
             temperature=self.config.get("graph_llm_temperature", 0.1),
             api_key=api_key,
+            base_url=base_url,
         )
 
         # Recreate the graph setup with new LLMs

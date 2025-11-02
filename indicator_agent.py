@@ -45,8 +45,18 @@ def create_indicator_agent(llm, toolkit):
 
         chain = prompt | llm.bind_tools(tools)
         messages = state["messages"]
+        
+        # Ensure at least one user message exists (required by some LLM APIs like DashScope)
+        from langchain_core.messages import HumanMessage
+        
+        def ensure_user_message(msgs):
+            """Ensure messages list contains at least one user/human message"""
+            if not msgs or not any(getattr(msg, 'type', None) in ('human', 'user') for msg in msgs):
+                return [HumanMessage(content="Please analyze the technical indicators for the provided OHLC data.")] + list(msgs)
+            return list(msgs)
 
         # --- Step 1: Ask for tool calls ---
+        messages = ensure_user_message(messages)
         ai_response = chain.invoke(messages)
         messages.append(ai_response)
 
@@ -68,6 +78,8 @@ def create_indicator_agent(llm, toolkit):
                 )
 
         # --- Step 3: Re-run the chain with tool results ---
+        # Ensure user message still exists after tool calls
+        messages = ensure_user_message(messages)
         final_response = chain.invoke(messages)
 
         return {
