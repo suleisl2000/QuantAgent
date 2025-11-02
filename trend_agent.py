@@ -63,7 +63,8 @@ def create_trend_agent(tool_llm, graph_llm, toolkit):
                 "You must first call the tool `generate_trend_image` using the provided `kline_data`. "
                 "Once the chart is generated, analyze the image for support/resistance trendlines and known candlestick patterns. "
                 "Only then should you proceed to make a prediction about the short-term trend (upward, downward, or sideways). "
-                "Do not make any predictions before generating and analyzing the image."
+                "Do not make any predictions before generating and analyzing the image.\n\n"
+                "**Important: Please respond in Chinese (中文). All trend analysis and explanations should be written in Chinese.**"
             )
 
             # --- Compose messages for the first round ---
@@ -110,7 +111,8 @@ def create_trend_agent(tool_llm, graph_llm, toolkit):
                         f"This candlestick ({time_frame} K-line) chart includes automated trendlines: the **blue line** is support, and the **red line** is resistance, both derived from recent closing prices.\n\n"
                         "Analyze how price interacts with these lines — are candles bouncing off, breaking through, or compressing between them?\n\n"
                         "Based on trendline slope, spacing, and recent K-line behavior, predict the likely short-term trend: **upward**, **downward**, or **sideways**. "
-                        "Support your prediction with respect to prediction, reasoning, signals."
+                        "Support your prediction with respect to prediction, reasoning, signals.\n\n"
+                        "**Please respond in Chinese (中文). All analysis should be written in Chinese.**"
                     ),
                 },
                 {
@@ -124,7 +126,8 @@ def create_trend_agent(tool_llm, graph_llm, toolkit):
                 [
                     SystemMessage(
                         content="You are a K-line trend pattern recognition assistant operating in a high-frequency trading context. "
-                        "Your task is to analyze candlestick charts annotated with support and resistance trendlines."
+                        "Your task is to analyze candlestick charts annotated with support and resistance trendlines.\n\n"
+                        "**Important: Please respond in Chinese (中文). All trend analysis and explanations should be written in Chinese.**"
                     ),
                     HumanMessage(content=image_prompt),
                 ],

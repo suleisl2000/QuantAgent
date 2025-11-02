@@ -95,7 +95,8 @@ def create_pattern_agent(tool_llm, graph_llm, toolkit):
                         "You are a trading pattern recognition assistant tasked with identifying classical high-frequency trading patterns. "
                         "You have access to tool: generate_kline_image. "
                         "Use it by providing appropriate arguments like `kline_data`\n\n"
-                        "Once the chart is generated, compare it to classical pattern descriptions and determine if any known pattern is present.",
+                        "Once the chart is generated, compare it to classical pattern descriptions and determine if any known pattern is present.\n\n"
+                        "**Important: Please respond in Chinese (中文). All pattern analysis and explanations should be written in Chinese.**\n",
                     ),
                     MessagesPlaceholder(variable_name="messages"),
                 ]
@@ -134,7 +135,8 @@ def create_pattern_agent(tool_llm, graph_llm, toolkit):
                         f"This is a {time_frame} candlestick chart generated from recent OHLC market data.\n\n"
                         f"{pattern_text}\n\n"
                         "Determine whether the chart matches any of the patterns listed. "
-                        "Clearly name the matched pattern(s), and explain your reasoning based on structure, trend, and symmetry."
+                        "Clearly name the matched pattern(s), and explain your reasoning based on structure, trend, and symmetry.\n\n"
+                        "**Please respond in Chinese (中文). All analysis should be written in Chinese.**"
                     ),
                 },
                 {
@@ -147,7 +149,7 @@ def create_pattern_agent(tool_llm, graph_llm, toolkit):
                 graph_llm.invoke,
                 [
                     SystemMessage(
-                        content="You are a trading pattern recognition assistant tasked with analyzing candlestick charts."
+                        content="You are a trading pattern recognition assistant tasked with analyzing candlestick charts.\n\n**Important: Please respond in Chinese (中文). All pattern analysis and explanations should be written in Chinese.**"
                     ),
                     HumanMessage(content=image_prompt),
                 ],

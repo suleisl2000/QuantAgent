@@ -37,7 +37,8 @@ def create_indicator_agent(llm, toolkit):
                     f"⚠️ The OHLC data provided is from a {time_frame} intervals, reflecting recent market behavior. "
                     "You must interpret this data quickly and accurately.\n\n"
                     "Here is the OHLC data:\n{kline_data}.\n\n"
-                    "Call necessary tools, and analyze the results.\n",
+                    "Call necessary tools, and analyze the results.\n\n"
+                    "**Important: Please respond in Chinese (中文). All analysis and explanations should be written in Chinese.**\n",
                 ),
                 MessagesPlaceholder(variable_name="messages"),
             ]
@@ -52,7 +53,7 @@ def create_indicator_agent(llm, toolkit):
         def ensure_user_message(msgs):
             """Ensure messages list contains at least one user/human message"""
             if not msgs or not any(getattr(msg, 'type', None) in ('human', 'user') for msg in msgs):
-                return [HumanMessage(content="Please analyze the technical indicators for the provided OHLC data.")] + list(msgs)
+                return [HumanMessage(content="请分析提供的OHLC数据的技术指标。请用中文回答。")] + list(msgs)
             return list(msgs)
 
         # --- Step 1: Ask for tool calls ---

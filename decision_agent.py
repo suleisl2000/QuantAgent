@@ -20,6 +20,8 @@ def create_final_trade_decider(llm):
         # --- System prompt for LLM ---
         prompt = f"""You are a high-frequency quantitative trading (HFT) analyst operating on the current {time_frame} K-line chart for {stock_name}. Your task is to issue an **immediate execution order**: **LONG** or **SHORT**. ⚠️ HOLD is prohibited due to HFT constraints.
 
+**Important: Please respond in Chinese (中文). All analysis, decisions, and explanations should be written in Chinese.**
+
             Your decision should forecast the market move over the **next N candlesticks**, where:
             - For example: TIME_FRAME = 15min, N = 1 → Predict the next 15 minutes.
             - TIME_FRAME = 4hour, N = 1 → Predict the next 4 hours.
@@ -70,13 +72,14 @@ def create_final_trade_decider(llm):
 
             ---
             ### 🧠 Output Format in json(for system parsing):
+            **Note: All text fields (forecast_horizon, justification) should be in Chinese (中文).**
 
             ```
             {{
-            "forecast_horizon": "Predicting next 3 candlestick (15 minutes, 1 hour, etc.)",
+            "forecast_horizon": "预测未来3根K线（15分钟、1小时等）",
             "decision": "<LONG or SHORT>",
-            "justification": "<Concise, confirmed reasoning based on reports>",
-            "risk_reward_ratio": "<float between 1.2 and 1.8>",
+            "justification": "<基于报告的简洁、确认的推理，请用中文>",
+            "risk_reward_ratio": "<1.2到1.8之间的浮点数>",
             }}
 
             --------
