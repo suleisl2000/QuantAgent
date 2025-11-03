@@ -322,7 +322,7 @@ class TechnicalTools:
     def compute_rsi(
         kline_data: Annotated[
             dict,
-            "Dictionary with a 'Close' key containing a list of float closing prices.",
+            "Dictionary with a 'Close' key containing a list of float closing prices. NOTE: This parameter is automatically injected by the system - you do NOT need to provide it in tool calls. Just call the tool with the period parameter if needed.",
         ],
         period: Annotated[
             int, "Lookback period for RSI calculation (default is 14)"
@@ -347,7 +347,7 @@ class TechnicalTools:
     def compute_macd(
         kline_data: Annotated[
             dict,
-            "Dictionary with a 'Close' key containing a list of float closing prices.",
+            "Dictionary with a 'Close' key containing a list of float closing prices. NOTE: This parameter is automatically injected by the system - you do NOT need to provide it in tool calls. Just call the tool with fastperiod, slowperiod, and signalperiod parameters if needed.",
         ],
         fastperiod: Annotated[int, "Fast EMA period"] = 12,
         slowperiod: Annotated[int, "Slow EMA period"] = 26,
@@ -383,7 +383,7 @@ class TechnicalTools:
     def compute_stoch(
         kline_data: Annotated[
             dict,
-            "Dictionary with 'High', 'Low', and 'Close' keys, each mapping to lists of float values.",
+            "Dictionary with 'High', 'Low', and 'Close' keys, each mapping to lists of float values. NOTE: This parameter is automatically injected by the system - you do NOT need to provide it in tool calls. Just call the tool without any arguments.",
         ]
     ) -> dict:
         """
@@ -415,7 +415,7 @@ class TechnicalTools:
     def compute_roc(
         kline_data: Annotated[
             dict,
-            "Dictionary with a 'Close' key containing a list of float closing prices.",
+            "Dictionary with a 'Close' key containing a list of float closing prices. NOTE: This parameter is automatically injected by the system - you do NOT need to provide it in tool calls. Just call the tool with the period parameter if needed.",
         ],
         period: Annotated[
             int, "Number of periods over which to calculate ROC (default is 10)"
@@ -441,7 +441,7 @@ class TechnicalTools:
     def compute_willr(
         kline_data: Annotated[
             dict,
-            "Dictionary with 'High', 'Low', and 'Close' keys containing float lists.",
+            "Dictionary with 'High', 'Low', and 'Close' keys containing float lists. NOTE: This parameter is automatically injected by the system - you do NOT need to provide it in tool calls. Just call the tool with the period parameter if needed.",
         ],
         period: Annotated[int, "Lookback period for Williams %R"] = 14,
     ) -> dict:

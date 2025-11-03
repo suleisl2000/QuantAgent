@@ -42,7 +42,9 @@ def create_indicator_agent(llm, toolkit):
                     "You are a high-frequency trading (HFT) analyst assistant operating under time-sensitive conditions. "
                     "You must analyze technical indicators to support fast-paced trading execution.\n\n"
                     "You have access to tools: compute_rsi, compute_macd, compute_roc, compute_stoch, and compute_willr. "
-                    "Use them by providing appropriate arguments like `kline_data` and the respective periods.\n\n"
+                    "**IMPORTANT: When calling these tools, you do NOT need to provide the `kline_data` parameter - it will be automatically injected by the system.** "
+                    "Just call the tools with their other parameters (like `period`, `fastperiod`, `slowperiod`, `signalperiod`) if needed. "
+                    "For example, call `compute_rsi(period=14)` instead of `compute_rsi(kline_data={{...}}, period=14)`.\n\n"
                     f"⚠️ The OHLC data provided is from a {time_frame} intervals, reflecting recent market behavior. "
                     "You must interpret this data quickly and accurately.\n\n"
                     "Here is the OHLC data:\n{kline_data}.\n\n"
@@ -110,7 +112,7 @@ def create_indicator_agent(llm, toolkit):
 
         # --- Step 1: Ask for tool calls ---
         messages = ensure_user_message(messages)
-        ai_response = invoke_with_retry(chain.invoke, messages)
+        ai_response = invoke_with_retry(chain.invoke, {"messages": messages})
         messages.append(ai_response)
 
         # --- Step 2: Collect tool results ---
@@ -133,7 +135,7 @@ def create_indicator_agent(llm, toolkit):
         # --- Step 3: Re-run the chain with tool results ---
         # Ensure user message still exists after tool calls
         messages = ensure_user_message(messages)
-        final_response = invoke_with_retry(chain.invoke, messages)
+        final_response = invoke_with_retry(chain.invoke, {"messages": messages})
 
         return {
             "messages": messages + [final_response],
