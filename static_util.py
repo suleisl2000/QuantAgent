@@ -9,11 +9,14 @@ import pandas as pd
 
 import color_style as color
 from graph_util import (
-    fit_trendlines_high_low,
-    fit_trendlines_single,
     get_line_points,
     split_line_into_segments,
+    find_wave_peaks,
+    find_wave_troughs,
+    find_downtrend_lines_from_peaks,
+    find_uptrend_lines_from_troughs,
 )
+
 
 matplotlib.use("Agg")
 
@@ -89,54 +92,116 @@ def generate_trend_image(kline_data) -> dict:
     candles["Datetime"] = pd.to_datetime(candles["Datetime"])
     candles.set_index("Datetime", inplace=True)
 
-    # Trendline fit functions assumed to be defined outside this scope
-    support_coefs_c, resist_coefs_c = fit_trendlines_single(candles["Close"])
-    support_coefs, resist_coefs = fit_trendlines_high_low(
-        candles["High"], candles["Low"], candles["Close"]
-    )
-
-    # Trendline values
-    support_line_c = support_coefs_c[0] * np.arange(len(candles)) + support_coefs_c[1]
-    resist_line_c = resist_coefs_c[0] * np.arange(len(candles)) + resist_coefs_c[1]
-    support_line = support_coefs[0] * np.arange(len(candles)) + support_coefs[1]
-    resist_line = resist_coefs[0] * np.arange(len(candles)) + resist_coefs[1]
-
-    # Convert to time-anchored coordinates
-    s_seq = get_line_points(candles, support_line)
-    r_seq = get_line_points(candles, resist_line)
-    s_seq2 = get_line_points(candles, support_line_c)
-    r_seq2 = get_line_points(candles, resist_line_c)
-
-    s_segments = split_line_into_segments(s_seq)
-    r_segments = split_line_into_segments(r_seq)
-    s2_segments = split_line_into_segments(s_seq2)
-    r2_segments = split_line_into_segments(r_seq2)
-
-    all_segments = s_segments + r_segments + s2_segments + r2_segments
-    colors = (
-        ["white"] * len(s_segments)
-        + ["white"] * len(r_segments)
-        + ["blue"] * len(s2_segments)
-        + ["red"] * len(r2_segments)
-    )
-
-    # Create addplot lines for close-based support/resistance
-    apds = [
-        mpf.make_addplot(support_line_c, color="blue", width=1, label="Close Support"),
-        mpf.make_addplot(resist_line_c, color="red", width=1, label="Close Resistance"),
-    ]
-
+    all_segments = []
+    colors = []
+    apds = []
+    
+    # 补充方法：基于收盘价的完整波段高点识别下降趋势线
+    # 使用波浪理论识别完整波段高点，而不是简单的局部高点
+    try:
+        close_series = candles["Close"].values
+        high_series = candles["High"].values
+        # 根据数据量自适应调整窗口大小
+        # 对于日线数据，窗口约20；对于周线数据，窗口约4-5；对于月线数据，窗口约2-3
+        data_len = len(close_series)
+        # 基准窗口：假设日线数据约200-250个点，窗口为20
+        # 按比例缩放窗口
+        base_window = 20
+        base_data_len = 200
+        adaptive_window = max(5, int(base_window * data_len / base_data_len))
+        adaptive_window = min(adaptive_window, data_len // 4)  # 最多不超过数据长度的1/4
+        
+        # 使用波浪理论识别完整波段高点
+        # 使用最高价来识别波段高点的位置，然后取该位置的收盘价来画趋势线
+        # min_amplitude_ratio=0.03 可以识别更多完整的波段高点，同时过滤掉噪音
+        peaks = find_wave_peaks(high_series, close_data=close_series, min_amplitude_ratio=0.03, lookback_window=adaptive_window, lookforward_window=adaptive_window)
+        downtrend_lines = find_downtrend_lines_from_peaks(peaks, min_points=3, min_slope=-0.001)
+        
+        if downtrend_lines:
+            print(f"[DEBUG] 找到 {len(downtrend_lines)} 条下降趋势线（基于局部高点）")
+            for idx, (slope, intercept, point_indices) in enumerate(downtrend_lines):
+                # 生成趋势线的y值
+                x_indices = np.arange(len(candles))
+                trend_y = slope * x_indices + intercept
+                
+                # 转换为时间锚定的坐标点
+                trend_seq = get_line_points(candles, trend_y)
+                trend_segments = split_line_into_segments(trend_seq)
+                all_segments.extend(trend_segments)
+                colors.extend(["red"] * len(trend_segments))  # 使用红色表示下降趋势线
+                
+                # 添加到 addplot
+                if idx == 0:
+                    apds.append(mpf.make_addplot(
+                        trend_y, color="red", width=2, linestyle="--", label="Downtrend (Wave Peaks)"
+                    ))
+                else:
+                    apds.append(mpf.make_addplot(
+                        trend_y, color="red", width=2, linestyle="--"
+                    ))
+                print(f"[DEBUG]   下降趋势线 {idx+1}: 连接 {len(point_indices)} 个点，斜率={slope:.4f}")
+    except Exception as e:
+        print(f"[DEBUG] 下降趋势线识别失败: {e}")
+    
+    # 补充方法：基于收盘价的完整波段低点识别上升趋势线
+    # 使用波浪理论识别完整波段低点，连接三个或多个相邻的回调低点
+    try:
+        close_series = candles["Close"].values
+        low_series = candles["Low"].values
+        # 根据数据量自适应调整窗口大小（与下降趋势线使用相同的自适应逻辑）
+        data_len = len(close_series)
+        base_window = 20
+        base_data_len = 200
+        adaptive_window = max(5, int(base_window * data_len / base_data_len))
+        adaptive_window = min(adaptive_window, data_len // 4)  # 最多不超过数据长度的1/4
+        
+        # 使用波浪理论识别完整波段低点
+        # 使用最低价来识别波段低点的位置，然后取该位置的收盘价来画趋势线
+        # min_amplitude_ratio=0.03 可以识别更多完整的波段低点，同时过滤掉噪音
+        troughs = find_wave_troughs(low_series, close_data=close_series, min_amplitude_ratio=0.03, lookback_window=adaptive_window, lookforward_window=adaptive_window)
+        uptrend_lines = find_uptrend_lines_from_troughs(troughs, min_points=3, min_slope=0.001)
+        
+        if uptrend_lines:
+            print(f"[DEBUG] 找到 {len(uptrend_lines)} 条上升趋势线（基于完整波段低点）")
+            for idx, (slope, intercept, point_indices) in enumerate(uptrend_lines):
+                # 生成趋势线的y值
+                x_indices = np.arange(len(candles))
+                trend_y = slope * x_indices + intercept
+                
+                # 转换为时间锚定的坐标点
+                trend_seq = get_line_points(candles, trend_y)
+                trend_segments = split_line_into_segments(trend_seq)
+                all_segments.extend(trend_segments)
+                colors.extend(["green"] * len(trend_segments))  # 使用绿色表示上升趋势线
+                
+                # 添加到 addplot
+                if idx == 0:
+                    apds.append(mpf.make_addplot(
+                        trend_y, color="green", width=2, linestyle="--", label="Uptrend (Wave Troughs)"
+                    ))
+                else:
+                    apds.append(mpf.make_addplot(
+                        trend_y, color="green", width=2, linestyle="--"
+                    ))
+                print(f"[DEBUG]   上升趋势线 {idx+1}: 连接 {len(point_indices)} 个点，斜率={slope:.4f}")
+    except Exception as e:
+        print(f"[DEBUG] 上升趋势线识别失败: {e}")
+    
     # Generate figure with legend and save locally
-    fig, axlist = mpf.plot(
-        candles,
-        type="candle",
-        style=color.my_color_style,
-        addplot=apds,
-        alines=dict(alines=all_segments, colors=colors, linewidths=1),
-        returnfig=True,
-        figsize=(12, 6),
-        block=False,
-    )
+    # 构建 mpf.plot 的参数，只有当列表不为空时才传递
+    plot_kwargs = {
+        "type": "candle",
+        "style": color.my_color_style,
+        "returnfig": True,
+        "figsize": (12, 6),
+        "block": False,
+    }
+    if apds:  # 只有当 apds 不为空时才传递
+        plot_kwargs["addplot"] = apds
+    if all_segments:  # 只有当 all_segments 不为空时才传递
+        plot_kwargs["alines"] = dict(alines=all_segments, colors=colors, linewidths=1)
+    
+    fig, axlist = mpf.plot(candles, **plot_kwargs)
 
     axlist[0].set_ylabel("Price", fontweight="normal")
     axlist[0].set_xlabel("Datetime", fontweight="normal")
